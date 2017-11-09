@@ -2,6 +2,7 @@ from sympy import *
 from time import time
 from mpmath import radians
 import tf
+import numpy as np
 
 '''
 Format of test case is [ [[EE position],[EE orientation as quaternions]],[WC location],[joint angles]]
@@ -73,43 +74,38 @@ def test_code(test_case):
     d1, d2, d3, d4, d5, d6, d7 = symbols('d1:8')
     a0, a1, a2, a3, a4, a5, a6 = symbols('a0:7')
     alpha0, alpha1, alpha2, alpha3, alpha4, alpha5, alpha6 = symbols('alpha0:7')
-   
+
     # Create Modified DH parameters
     
-    s   =   {   alpha0: 0,          a0: 0,    d1: .75,    q1: q1,
-                alpha1: -pi/2.,    a1: 0.35, d2: 0,      q2: -pi/2.+q2,  
-                alpha2: 0,          a2: 1.25, q3: 0,      q3: q3,
-                alpha3: -pi/2.,    a3: -.054, d4: 1.5,    q4: q4,
-                alpha4: pi/2.,     a4:   0,  d5: 0,      q5: q5,  
-                alpha5: -pi/2.,    a5:   0,  q6: 0,      q6: q6,
-                alpha6: 0,          a6:   0,  d7: .303,   q7: 0}
+    s   =   {   alpha0: 0,         a0: 0,       d1: .75,
+                alpha1: -pi/2.,    a1: 0.35,    d2: 0,      q2: -pi/2.+q2,  
+                alpha2: 0,         a2: 1.25,    d3: 0,  
+                alpha3: -pi/2.,    a3: -.054,   d4: 1.5, 
+                alpha4: pi/2.,     a4:   0,     d5: 0,     
+                alpha5: -pi/2.,    a5:   0,     d6: 0,      
+                alpha6: 0,         a6:   0,     d7: .303,   q7: 0}
+    
     #
     #            
     # Define Modified DH Transformation matrix
     #
-    def DH_Matrix(alpha,a,d,q)
+    def DH_Matrix(alpha,a,d,q):
         return Matrix([[             cos(q),            -sin(q),            0,              a],
                         [ sin(q)*cos(alpha), cos(q)*cos(alpha), -sin(alpha), -sin(alpha)*d],
                         [ sin(q)*sin(alpha), cos(q)*sin(alpha),  cos(alpha),  cos(alpha)*d],
                         [                   0,                   0,            0,               1]])
     
     # Create individual transformation matrices
-    T0_1 = DH_Matrix(alpha0,a0,d1,q1).subs(s)
-    T1_2 = DH_Matrix(alpha1,a1,d2,q2).subs(s)    
-    T2_3 = DH_Matrix(alpha2,a2,d3,q3).subs(s)    
-    T3_4 = DH_Matrix(alpha3,a3,d4,q4).subs(s)
-    T4_5 = DH_Matrix(alpha4,a4,d5,q5).subs(s)
-    T5_6 = DH_Matrix(alpha5,a5,d6,q6).subs(s)
-    T6_EE = DH_Matrix(alpha6,a6,d7,q7).subs(s)
-    
-    
+    T0_1 = DH_Matrix(alpha0, a0, d1, q1).subs(s)
+    T1_2 = DH_Matrix(alpha1, a1, d2, q2).subs(s)    
+    T2_3 = DH_Matrix(alpha2, a2, d3, q3).subs(s)    
+    T3_4 = DH_Matrix(alpha3, a3, d4, q4).subs(s)
+    T4_5 = DH_Matrix(alpha4, a4, d5, q5).subs(s)
+    T5_6 = DH_Matrix(alpha5, a5, d6, q6).subs(s)
+    T6_EE = DH_Matrix(alpha6,a6, d7, q7).subs(s)
+
+    # Create complete transformation matrix
     T0_EE = simplify(T0_1*T1_2*T2_3*T3_4*T4_5*T5_6*T6_EE)
-    
-    #
-    #
-    # Extract rotation matrices from the transformation matrices
-
-
 
 
     ##################################################
@@ -120,64 +116,94 @@ def test_code(test_case):
     
               
     # Extract end-effector position and orientation from request
+    # End Effector position matrix
     EE = Matrix([req.poses[x].position.x, req.poses[x].position.y, req.poses[x].position.z])
     
+    # End Effector orientation
     roll, pitch, yaw = tf.transformations.euler_from_quaternion([req.poses[x].orientation.x, req.poses[x].orientation.y, req.poses[x].orientation.z, req.poses[x].orientation.w])
     
     r,p,y = symbols('r p y')
     
-    R_x = Matrix([[ 1,              0,        0],
-                    [ 0,        cos(r), -sin(r)],
-                    [ 0,        sin(r),  cos(r)]])
+    # Skeleton rotation matrices
+    R_x = Matrix([[ 1,             0,       0],
+                  [ 0,        cos(r), -sin(r)],
+                  [ 0,        sin(r),  cos(r)]])
 
     R_y = Matrix([[ cos(p),        0,  sin(p)],
-                  [       0,        1,        0],
+                  [      0,        1,       0],
                   [-sin(p),        0,  cos(p)]])
 
-    R_z = Matrix([[ cos(y), -sin(y),        0],
-                  [ sin(y),  cos(y),        0],
-                  [ 0,              0,        1]])
+    R_z = Matrix([[ cos(y),  -sin(y),       0],
+                  [ sin(y),   cos(y),       0],
+                  [ 0,              0,      1]])
 
-    # Compensate for rotation discrepancy between DH parameters and Gazebo
-                  
+
+     
+    # Uncorrected End effector rotation
     R_EE = R_z * R_y * R_x
     
+    print (simplify(R_EE))
+ 
+    # Compensate for rotation discrepancy between DH parameters and Gazebo
     R_EE_corr = R_z.subs(y, pi) * R_y.subs(p, -pi/2)
     
+    print (simplify(R_EE_corr))
     R_EE = simplify(R_EE * R_EE_corr)
     R_EE = R_EE.subs({'r': roll,'p':pitch,'y':yaw})
 
-    WC = EE - d7 * R_EE[:,2]
+    # Calculate Wrist Centre
+    # Step back from End Effector, along the gripper link's z axis, to get Wrist Centre
+    WC = EE - s[d7] * R_EE[:,2]
 
+
+
+    #
     # Calculate joint angles using Geometric IK method
-
-
-    ##################################################
-
-
+    #
+    # Theta1 is the horizontal rotation of the base joint, and can be
+    # deduced by the XY component of the wrist centre 
     theta1 = atan2(WC[1],WC[0])
-    
+
+    # Get wrist centre distance from origin, on XY plane
     WC_xy_mag = sqrt(WC[0]*WC[0]+WC[1]*WC[1])
-    side_A = sqrt((a3 * a3) + (d4 * d4))
-    side_B = sqrt((WC_xy_mag - a1) * (WC_xy_mag - a1) + (WC[2] - d1) * (WC[2] - d1))
-    side_C = a2
     
+    #Thus, the positions of WC and Joint2 are known, as are the lengths of the links between them.
+    #This means that Theta2 and Theta3 can be determined by analysing the triangle created by
+    #Joint 2, Joint 3, and the Wrist Centre:
+    
+    #Distance between Joint 3 and Wrist Centre
+    side_A = sqrt((s[a3] * s[a3]) + (s[d4] * s[d4]))
+    #Distance between Wrist Centre and Joint 2
+    side_B = sqrt((WC_xy_mag - s[a1]) * (WC_xy_mag - s[a1]) + (WC[2] - s[d1]) * (WC[2] - s[d1]))
+    #Distance between Joints 2 and 3
+    side_C = s[a2]
+    
+    #As all sides are known, apply Cosine rules to determine angles
     angle_a = acos((side_B * side_B + side_C * side_C - side_A * side_A) / (2 * side_B * side_C))
     angle_b = acos((side_A * side_A + side_C * side_C - side_B * side_B) / (2 * side_A * side_C))    
-    angle_c = acos((side_A * side_A + side_B * side_B - side_C * side_C) / (2 * side_A * side_B))
-    angle_sag = atan2(a3,d4)
+
+    #Account for the sag on link 3
+    angle_sag = atan2(s[a3],s[d4])
+      
+    #Use angles to determine Thetas
+    theta2 = pi/2 - angle_a - atan2(WC[2] - s[d1], WC_xy_mag - s[a1])
+    theta3 = pi/2 + angle_sag - angle_b
     
-    theta2 = pi/2 - angle_a - atan2(WC[2] - d1, WC_xy_mag - a1)
-    theta3 = pi/2 - angle_b - angle_sag
-    
+    #Composition of extracted rotation matrices for rotations 0:3
     R0_3 = T0_1[0:3, 0:3] * T1_2[0:3,0:3] * T2_3[0:3,0:3]
+    R0_3 = R0_3.evalf(subs={q1: theta1, q2: theta2, q3: theta3})
     
-    R0_3 = R_3.evalf(subs={q1: theta1, q2: theta2, q3: theta3})
     
-    R3_6 = R0.3.inv("LU") * ROT_EE
+    # Get rotation of spherical wrist joints by applying end effector rotation matrix to inverse of R0_3
+    R3_6 = R0_3.transpose() * R_EE
+    R3_6 = simplify(R3_6)
     
+    
+    R3_EE_symb = T3_4[0:3, 0:3] * T4_5[0:3,0:3] * T5_6[0:3,0:3] * T6_EE[0:3,0:3]
+    print (simplify(R3_EE_symb))
+    #Extract euler angles
     theta4 = atan2(R3_6[2,2], -R3_6[0,2])
-    theta5 = atan2(sqrt(R3_6[0,2]*R3_6[0,2] + R3_6[2,2]*R3_6[2,2]), R3_6[1,2]))
+    theta5 = atan2(sqrt(R3_6[0,2]*R3_6[0,2] + R3_6[2,2]*R3_6[2,2]), R3_6[1,2])
     theta6 = atan2(-R3_6[1,1], R3_6[1,0])
 
     ## 
@@ -187,7 +213,9 @@ def test_code(test_case):
     ## For additional debugging add your forward kinematics here. Use your previously calculated thetas
     ## as the input and output the position of your end effector as your_ee = [x,y,z]
 
-    FK = T0_EE.evalf(subs={q1: theta1, q2: theta2, q3: theta3, q4: theta4, q5: theta5, q6: theta6})
+    FK = T0_EE.subs({q1: theta1, q2: theta2, q3: theta3, q4: theta4, q5: theta5, q6: theta6})
+    FK = FK.evalf()
+
 
     ## End your code input for forward kinematics here!
     ########################################################################################
@@ -241,8 +269,12 @@ def test_code(test_case):
         print ("Overall end effector offset is: %04.8f units \n" % ee_offset)
 
 
-
-
+    print ((theta1*180/pi).evalf())
+    print ((theta2*180/pi).evalf())
+    print ((theta3*180/pi).evalf())
+    print ((theta4).evalf())
+    print ((theta5).evalf())
+    print ((theta6).evalf())
 if __name__ == "__main__":
     # Change test case number for different scenarios
     test_case_number = 1
