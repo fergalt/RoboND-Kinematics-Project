@@ -142,12 +142,12 @@ def test_code(test_case):
     # Uncorrected End effector rotation
     R_EE = R_z * R_y * R_x
     
-    print (simplify(R_EE))
+    #print (simplify(R_EE))
  
     # Compensate for rotation discrepancy between DH parameters and Gazebo
     R_EE_corr = R_z.subs(y, pi) * R_y.subs(p, -pi/2)
     
-    print (simplify(R_EE_corr))
+    #print (simplify(R_EE_corr))
     R_EE = simplify(R_EE * R_EE_corr)
     R_EE = R_EE.subs({'r': roll,'p':pitch,'y':yaw})
 
@@ -181,11 +181,15 @@ def test_code(test_case):
     #As all sides are known, apply Cosine rules to determine angles
     angle_a = acos((side_B * side_B + side_C * side_C - side_A * side_A) / (2 * side_B * side_C))
     angle_b = acos((side_A * side_A + side_C * side_C - side_B * side_B) / (2 * side_A * side_C))    
-
+    print (angle_a*180/pi).evalf()
+    print atan2(WC[2] - s[d1], WC_xy_mag - s[a1])
+    print (angle_b*180/pi).evalf()
     #Account for the sag on link 3
     angle_sag = atan2(s[a3],s[d4])
       
     #Use angles to determine Thetas
+    #Theta2: Min -45, Max 85
+    #
     theta2 = pi/2 - angle_a - atan2(WC[2] - s[d1], WC_xy_mag - s[a1])
     theta3 = pi/2 + angle_sag - angle_b
     
@@ -195,17 +199,23 @@ def test_code(test_case):
     
     
     # Get rotation of spherical wrist joints by applying end effector rotation matrix to inverse of R0_3
-    R3_6 = R0_3.transpose() * R_EE
+    R3_6 = R0_3.inv('LU') * R_EE
     R3_6 = simplify(R3_6)
     
     
     R3_EE_symb = T3_4[0:3, 0:3] * T4_5[0:3,0:3] * T5_6[0:3,0:3] * T6_EE[0:3,0:3]
-    print (simplify(R3_EE_symb))
+    #print (simplify(R3_EE_symb))
     #Extract euler angles
-    theta4 = atan2(R3_6[2,2], -R3_6[0,2])
     theta5 = atan2(sqrt(R3_6[0,2]*R3_6[0,2] + R3_6[2,2]*R3_6[2,2]), R3_6[1,2])
-    theta6 = atan2(-R3_6[1,1], R3_6[1,0])
-
+    if sin(theta5)  < 0:
+        theta4 = atan2(-R3_6[2,2], R3_6[0,2])            
+        theta6 = atan2(R3_6[1,1], -R3_6[1,0])
+    else:
+        theta4 = atan2(R3_6[2,2], -R3_6[0,2])            
+        theta6 = atan2(-R3_6[1,1], R3_6[1,0])
+    
+    
+    
     ## 
     ########################################################################################
     
@@ -272,9 +282,9 @@ def test_code(test_case):
     print ((theta1*180/pi).evalf())
     print ((theta2*180/pi).evalf())
     print ((theta3*180/pi).evalf())
-    print ((theta4).evalf())
-    print ((theta5).evalf())
-    print ((theta6).evalf())
+    print ((theta4*180/pi).evalf())
+    print ((theta5*180/pi).evalf())
+    print ((theta6*180/pi).evalf())
 if __name__ == "__main__":
     # Change test case number for different scenarios
     test_case_number = 1
